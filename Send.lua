@@ -41,6 +41,15 @@ local function Unlock(guid)
     if at then C_Item.UnlockItem(at) end
 end
 
+-- The client's one mail slot is hidden; an item left in it (by the client's
+-- own right-click, or a letter that failed) goes back to its bag.
+local function EmptyClientSlot()
+    if not GetSendMailItem() then return end
+    ClearCursor()
+    ClickSendMailItemButton()
+    ClearCursor()
+end
+
 -- The slots and the letter -----------------------------------------------------
 
 local letter = { StationeryBackgroundLeft, StationeryBackgroundRight, (select(3, SendMailScrollFrame:GetRegions())) }
@@ -154,14 +163,18 @@ SendMailScrollChildFrame:SetScript("OnMouseUp", function()
     if CursorHasItem() then AttachCursor() end
 end)
 
+-- Right-click takes the item off. Left-click or a drop attaches what is on
+-- the cursor, or takes the item off onto the cursor.
 local function SlotClick()
     local guid = queue[this:GetID()]
-    if CursorHasItem() then
+    if arg1 == "RightButton" then
+        if guid then Detach(guid) end
+    elseif CursorHasItem() then
         AttachCursor()
     elseif guid then
         Detach(guid)
         local at = Where(guid)
-        if arg1 ~= "RightButton" and at then PickupContainerItem(at.bagID, at.slotIndex) end
+        if at then PickupContainerItem(at.bagID, at.slotIndex) end
     end
 end
 
@@ -236,11 +249,7 @@ end)
 local function Stop(why)
     if not sending then return end
     if sending.timer then sending.timer:Cancel() end
-    if GetSendMailItem() then -- the item of the letter that failed goes back to its bag
-        ClearCursor()
-        ClickSendMailItemButton()
-        ClearCursor()
-    end
+    EmptyClientSlot() -- the item of the letter that failed goes back to its bag
     sending = nil
     if why then M.Print(why) end
     Lock()
@@ -262,6 +271,7 @@ local function Next()
         Listen()
         return Draw()
     end
+    EmptyClientSlot()
     if at then
         C_Item.UnlockItem(at)
         ClearCursor()
@@ -330,6 +340,7 @@ function handlers.MAIL_SHOW()
     for event in pairs(handlers) do
         if event ~= "BAG_UPDATE_DELAYED" and event ~= "ITEM_LOCK_CHANGED" then events:RegisterEvent(event) end
     end
+    EmptyClientSlot()
     Prefill()
 end
 function handlers.MAIL_CLOSED()
