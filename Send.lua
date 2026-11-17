@@ -58,7 +58,8 @@ end
 local function Draw()
     for i, slot in ipairs(slots) do
         local at = queue[i] and Where(queue[i])
-        slot:SetNormalTexture(at and C_Item.GetItemIcon(at))
+        if at then slot.icon:SetTexture(C_Item.GetItemIcon(at)) end
+        slot.icon:SetShown(at ~= nil)
         local count = at and C_Item.GetStackCount(at) or 0
         slot.count:SetText(count > 1 and count or "")
     end
@@ -162,6 +163,9 @@ for i = 1, SLOTS do
     back:SetHeight(39)
     back:SetPoint("TOPLEFT", -1, 1)
     back:SetTexCoord(0, 0.640625, 0, 0.640625)
+    slot.icon = slot:CreateTexture(nil, "BORDER")
+    slot.icon:SetAllPoints(slot)
+    slot.icon:Hide()
     slot.count = slot:CreateFontString(nil, "ARTWORK", "NumberFontNormal")
     slot.count:SetPoint("BOTTOMRIGHT", -5, 2)
     slot:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
