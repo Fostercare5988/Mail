@@ -74,6 +74,9 @@ local function Layout()
 end
 
 local function Draw()
+    for i = #queue, 1, -1 do -- an item no longer in the bags (sold, mailed) drops off
+        if not Where(queue[i]) then table.remove(queue, i) end
+    end
     for i, slot in ipairs(slots) do
         local at = queue[i] and Where(queue[i])
         if at then slot.icon:SetTexture(C_Item.GetItemIcon(at)) end
@@ -118,7 +121,7 @@ local function Attach(guid)
     if sending then return M.Print("Wait until the letters on their way have gone.") end
     local at = guid and Where(guid)
     if not at then return M.Print("That item cannot be attached.") end
-    if Find(guid) then return end
+    if Find(guid) then return Detach(guid) end -- a second attach takes it off
     if #queue == SLOTS then return M.Print("All " .. SLOTS .. " slots are full.") end
     if not Mailable(at) then return M.Print(C_Item.GetItemLink(at) .. " cannot be mailed.") end
     queue[#queue + 1] = guid
@@ -153,10 +156,11 @@ function ContainerFrameItemButton_OnClick(button, ignoreModifiers)
         return BagClick(button, ignoreModifiers)
     end
     local bag, slot = this:GetParent():GetID(), this:GetID()
-    local waiting = WaitingAt(bag, slot)
+    local guid = C_Item.GetItemGUID({ bagID = bag, slotIndex = slot })
+    local waiting = WaitingAt(bag, slot) or (Find(guid) and guid)
     if waiting then return Detach(waiting) end
     if not SendMailFrame:IsVisible() then MailFrameTab_OnClick(2) end
-    Attach(C_Item.GetItemGUID({ bagID = bag, slotIndex = slot }))
+    Attach(guid)
 end
 
 -- An item dropped on the letter is attached too, not put in the client's slot.
@@ -361,11 +365,10 @@ function handlers.MAIL_SEND_SUCCESS()
     if s.waiting ~= true then Detach(s.waiting) end
     s.waiting, s.sent = nil, s.sent + 1
     M.Mailed(s.to)
-    Next()
+    C_Timer.After(0, function() if sending == s then Next() end end)
 end
--- The next letter starts in the same event as the last one's success, so a
--- failure always belongs to the letter on its way.
-function handlers.MAIL_FAILED() Stop() end
+-- Only a letter on its way can fail; between letters a failure is not ours.
+function handlers.MAIL_FAILED() if sending and sending.waiting then Stop() end end
 function handlers.UI_ERROR_MESSAGE() if sending and MAIL_ERRORS[arg1] then Stop() end end
 -- A server update for a waiting item clears its lock; an item gone drops off.
 function handlers.BAG_UPDATE_DELAYED()
