@@ -29,12 +29,15 @@ end
 
 -- One request to the server, then wait for its MAIL_INBOX_UPDATE. A request
 -- with no answer is asked again after the inbox is fetched once more.
+local function Ask()
+    if run and run.work then run.work.asked = nil end
+    CheckInbox()
+end
+-- C_Timer drops a callback's error; this sends it to the error handler (KP-63).
+local function AskAgain() xpcall(Ask, geterrorhandler()) end
 local function Wait()
     if run.timer then run.timer:Cancel() end
-    run.timer = C_Timer.NewTimer(WAIT, function()
-        if run and run.work then run.work.asked = nil end
-        CheckInbox()
-    end)
+    run.timer = C_Timer.NewTimer(WAIT, AskAgain)
 end
 
 -- Each inbox update moves the take on by one request: the money, then the

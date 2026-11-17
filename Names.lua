@@ -33,11 +33,11 @@ function M.Mailed(name)
     local key = Key()
     MailDB[key] = MailDB[key] or { recent = {}, last = {} } -- vanillaforge-ignore: D2 (once per realm)
     local realm = MailDB[key]
-    for i, known in ipairs(realm.recent) do
-        if known == name then table.remove(realm.recent, i); break end
+    local recent = { name } -- vanillaforge-ignore: D2 (once per letter); no table.insert/remove (KP-65)
+    for _, known in ipairs(realm.recent) do
+        if known ~= name and #recent < RECENT then recent[#recent + 1] = known end
     end
-    table.insert(realm.recent, 1, name)
-    realm.recent[RECENT + 1] = nil
+    realm.recent = recent
     realm.last[UnitName("player")] = name
 end
 

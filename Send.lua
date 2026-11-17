@@ -15,8 +15,18 @@ local slots = {}
 
 local function Where(guid) return C_Item.GetItemLocation(guid) end -- "### C_Item.GetItemLocation(itemGUID)"
 
+-- C_Timer drops a callback's error; this sends it to the error handler (KP-63).
+local function Guarded(fn) return function() xpcall(fn, geterrorhandler()) end end
+
 local function Find(guid)
     for i, queued in ipairs(queue) do if queued == guid then return i end end
+end
+
+-- Lists here grow with t[#t + 1] and shrink with this, never table.remove:
+-- in Lua 5.0 table.remove counts with the stored size, which # ignores, and
+-- once that size reaches 0 it removes nothing (KNOWN_PATTERNS KP-65).
+local function Drop(i)
+    for j = i, #queue do queue[j] = queue[j + 1] end
 end
 
 -- "### C_Item.LockItem(itemLocation)": a waiting item looks locked in every
@@ -67,7 +77,7 @@ end
 
 local function Draw()
     for i = #queue, 1, -1 do -- an item no longer in the bags (sold, mailed) drops off
-        if not Where(queue[i]) then table.remove(queue, i) end
+        if not Where(queue[i]) then Drop(i) end
     end
     for i, slot in ipairs(slots) do
         local at = queue[i] and Where(queue[i])
@@ -105,7 +115,7 @@ end
 local function Detach(guid)
     local i = Find(guid)
     if not i then return end
-    table.remove(queue, i)
+    Drop(i)
     Unlock(guid)
     Listen()
     Draw()
@@ -259,7 +269,7 @@ local function Next()
     local guid = queue[1]
     local at = guid and Where(guid)
     if guid and not at then -- sold or destroyed while waiting
-        table.remove(queue, 1)
+        Drop(1)
         return Next()
     end
     local s = sending
@@ -291,7 +301,7 @@ local function Next()
     end
     s.waiting = guid or true
     if s.timer then s.timer:Cancel() end
-    s.timer = C_Timer.NewTimer(ANSWER, function() Stop("The server did not answer. Press Send to try again.") end)
+    s.timer = C_Timer.NewTimer(ANSWER, Guarded(function() Stop("The server did not answer. Press Send to try again.") end))
     SendMail(s.to, subject, s.body)
 end
 
@@ -357,7 +367,7 @@ function handlers.MAIL_SEND_SUCCESS()
     if s.waiting ~= true then Detach(s.waiting) end
     s.waiting, s.sent = nil, s.sent + 1
     M.Mailed(s.to)
-    C_Timer.After(0, function() if sending == s then Next() end end)
+    C_Timer.After(0, Guarded(function() if sending == s then Next() end end))
 end
 -- Only a letter on its way can fail; between letters a failure is not ours.
 function handlers.MAIL_FAILED() if sending and sending.waiting then Stop() end end
@@ -365,7 +375,7 @@ function handlers.UI_ERROR_MESSAGE() if sending and MAIL_ERRORS[arg1] then Stop(
 -- A server update for a waiting item clears its lock; an item gone drops off.
 function handlers.BAG_UPDATE_DELAYED()
     for i = #queue, 1, -1 do
-        if not Where(queue[i]) then table.remove(queue, i) end
+        if not Where(queue[i]) then Drop(i) end
     end
     Lock()
     Listen()
