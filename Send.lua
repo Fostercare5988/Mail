@@ -85,10 +85,12 @@ local function Draw()
     SendMailFrame_Update()
 end
 
--- While items wait: bag changes (an item gone) and lock changes (the server
--- clears a lock; "### C_Item.IsLocked(itemLocation)" says to listen here).
+-- While items wait: bag changes (an item gone), lock changes (the server
+-- clears a lock; "### C_Item.IsLocked(itemLocation)" says to listen here) and
+-- logging out or reloading (the client keeps a lock until then).
+local WAITING = { "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED", "PLAYER_LOGOUT" }
 local function Listen()
-    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED" }) do
+    for _, event in ipairs(WAITING) do
         if #queue > 0 then events:RegisterEvent(event) else events:UnregisterEvent(event) end
     end
 end
@@ -338,7 +340,9 @@ local MAIL_ERRORS = { [ERR_MAIL_TO_SELF] = true, [ERR_PLAYER_WRONG_FACTION] = tr
 local handlers = {}
 function handlers.MAIL_SHOW()
     for event in pairs(handlers) do
-        if event ~= "BAG_UPDATE_DELAYED" and event ~= "ITEM_LOCK_CHANGED" then events:RegisterEvent(event) end
+        if event ~= "BAG_UPDATE_DELAYED" and event ~= "ITEM_LOCK_CHANGED" and event ~= "PLAYER_LOGOUT" then
+            events:RegisterEvent(event)
+        end
     end
     EmptyClientSlot()
     Prefill()
@@ -373,5 +377,20 @@ function handlers.BAG_UPDATE_DELAYED()
     Draw()
 end
 handlers.ITEM_LOCK_CHANGED = Lock
+function handlers.PLAYER_LOGOUT()
+    for _, guid in ipairs(queue) do Unlock(guid) end
+end
+-- Anything that puts an item in the client's one slot while no letter goes
+-- out (its own right-click on the Send tab, a drop on the letter) hands it to
+-- Mail instead: "### GetSendMailItemLink([attachmentIndex])" names the item,
+-- and the last bag pick-up (a GAP, see CursorItem) says which copy it is.
+function handlers.MAIL_SEND_INFO_UPDATE()
+    if sending or not GetSendMailItem() then return end
+    local _, id = GetSendMailItemLink()
+    local at = picked and Where(picked)
+    local guid = at and C_Item.GetItemID(at) == id and picked
+    EmptyClientSlot()
+    if guid then Attach(guid) end
+end
 events:SetScript("OnEvent", function() handlers[event]() end)
 events:RegisterEvent("MAIL_SHOW")
