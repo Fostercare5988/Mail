@@ -19,14 +19,6 @@ local function Find(guid)
     for i, queued in ipairs(queue) do if queued == guid then return i end end
 end
 
--- The waiting item in a bag slot, if one waits there.
-local function WaitingAt(bag, slot)
-    for _, guid in ipairs(queue) do
-        local at = Where(guid)
-        if at and at.bagID == bag and at.slotIndex == slot then return guid end
-    end
-end
-
 -- "### C_Item.LockItem(itemLocation)": a waiting item looks locked in every
 -- bag addon. Only a look; a server update for the item clears it.
 local function Lock()
@@ -123,7 +115,7 @@ local function Attach(guid)
     if sending then return M.Print("Wait until the letters on their way have gone.") end
     local at = guid and Where(guid)
     if not at then return M.Print("That item cannot be attached.") end
-    if Find(guid) then return Detach(guid) end -- a second attach takes it off
+    if Find(guid) then return end -- attached already
     if #queue == SLOTS then return M.Print("All " .. SLOTS .. " slots are full.") end
     if not Mailable(at) then return M.Print(C_Item.GetItemLink(at) .. " cannot be mailed.") end
     queue[#queue + 1] = guid
@@ -157,10 +149,8 @@ function ContainerFrameItemButton_OnClick(button, ignoreModifiers)
     if button ~= "RightButton" or not MailFrame:IsVisible() or IsModifierKeyDown() then -- "### IsModifierKeyDown()"
         return BagClick(button, ignoreModifiers)
     end
-    local bag, slot = this:GetParent():GetID(), this:GetID()
-    local guid = C_Item.GetItemGUID({ bagID = bag, slotIndex = slot })
-    local waiting = WaitingAt(bag, slot) or (Find(guid) and guid)
-    if waiting then return Detach(waiting) end
+    local guid = C_Item.GetItemGUID({ bagID = this:GetParent():GetID(), slotIndex = this:GetID() })
+    if Find(guid) then return Detach(guid) end
     if not SendMailFrame:IsVisible() then MailFrameTab_OnClick(2) end
     Attach(guid)
 end
