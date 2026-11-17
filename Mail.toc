@@ -1,0 +1,10 @@
+## Interface: 11200
+## Title: |cffff9e38Mail|r |cffffd6a8[Fostercare5988]|r
+## Notes: Open all mail in one click, send many items at once, complete recipient names
+## Author: Fostercare5988
+## Version: 1.0.0
+## SavedVariables: MailDB
+## LoadSavedVariablesFirst: 1
+Names.lua
+Inbox.lua
+Send.lua
