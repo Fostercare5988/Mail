@@ -72,17 +72,12 @@ end
 
 -- Attaching --------------------------------------------------------------------
 
--- GAP: a DLL should say whether an item can be mailed (C_Item.IsBound misses
--- conjured and quest items). The client's own slot is asked: put it in, look,
--- take it out. The client says why when it refuses.
+-- Soulbound, conjured and quest items cannot be mailed: "### C_Item.IsBound(itemLocation)",
+-- "### C_Item.GetItemData(itemLocation)" (isConjured, bindType 4 = quest).
+-- The client's own slot is touched only when a letter goes out.
 local function Mailable(at)
-    ClearCursor()
-    PickupContainerItem(at.bagID, at.slotIndex)
-    ClickSendMailItemButton()
-    local yes = GetSendMailItem() ~= nil
-    if yes then ClickSendMailItemButton() end
-    ClearCursor()
-    return yes
+    local data = C_Item.GetItemData(at)
+    return not C_Item.IsBound(at) and not (data and (data.isConjured or data.bindType == 4))
 end
 
 local function Detach(guid)
@@ -98,8 +93,9 @@ local function Attach(guid)
     if sending or not guid or Find(guid) then return end
     if #queue == SLOTS then return M.Print("All " .. SLOTS .. " slots are full.") end
     local at = Where(guid)
-    queue[#queue + 1] = guid -- first, so the probe's page update draws the queue
-    if not (at and Mailable(at)) then return Detach(guid) end
+    if not at then return end
+    if not Mailable(at) then return M.Print(C_Item.GetItemLink(at) .. " cannot be mailed.") end
+    queue[#queue + 1] = guid
     Lock()
     Listen()
     Draw()
@@ -336,7 +332,7 @@ function handlers.UI_ERROR_MESSAGE() if sending and MAIL_ERRORS[arg1] then Stop(
 -- A server update for a waiting item clears its lock; an item gone drops off.
 function handlers.BAG_UPDATE_DELAYED()
     for i = #queue, 1, -1 do
-        if not C_Item.IsItemGUIDInInventory(queue[i]) then table.remove(queue, i) end
+        if not Where(queue[i]) then table.remove(queue, i) end
     end
     Lock()
     Listen()
