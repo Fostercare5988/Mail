@@ -88,10 +88,12 @@ local function Draw()
     SendMailFrame_Update()
 end
 
--- While items wait: bag changes (an item gone), lock changes (the server
--- clears a lock; "### C_Item.IsLocked(itemLocation)" says to listen here) and
--- logging out or reloading (the client keeps a lock until then).
-local WAITING = { "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED", "PLAYER_LOGOUT" }
+-- While items wait: bag changes (an item gone, or a server update that
+-- cleared a lock) and logging out or reloading (the client keeps a lock until
+-- then). Not ITEM_LOCK_CHANGED: LockItem and UnlockItem fire it inside the
+-- call, so relocking there undid Mail's own unlocks (seen in play 2026-11-17:
+-- items could not be taken off or sent).
+local WAITING = { "BAG_UPDATE_DELAYED", "PLAYER_LOGOUT" }
 local function Listen()
     for _, event in ipairs(WAITING) do
         if #queue > 0 then events:RegisterEvent(event) else events:UnregisterEvent(event) end
@@ -344,7 +346,7 @@ local MAIL_ERRORS = { [ERR_MAIL_TO_SELF] = true, [ERR_PLAYER_WRONG_FACTION] = tr
 local handlers = {}
 function handlers.MAIL_SHOW()
     for event in pairs(handlers) do
-        if event ~= "BAG_UPDATE_DELAYED" and event ~= "ITEM_LOCK_CHANGED" and event ~= "PLAYER_LOGOUT" then
+        if event ~= "BAG_UPDATE_DELAYED" and event ~= "PLAYER_LOGOUT" then
             events:RegisterEvent(event)
         end
     end
@@ -379,7 +381,6 @@ function handlers.BAG_UPDATE_DELAYED()
     Listen()
     Draw()
 end
-handlers.ITEM_LOCK_CHANGED = Lock
 function handlers.PLAYER_LOGOUT()
     for _, guid in ipairs(queue) do Unlock(guid) end
 end
