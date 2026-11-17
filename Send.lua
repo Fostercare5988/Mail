@@ -123,12 +123,14 @@ local function AttachCursor()
 end
 
 -- A right-click on a bag item at the mailbox attaches it, or takes it off.
-local Use = UseContainerItem
-function UseContainerItem(bag, slot, onSelf)
-    if not MailFrame:IsVisible() or IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then
-        return Use(bag, slot, onSelf)
+-- The client's own right-click (OctoWoW ContainerFrame.lua:616) would swap it
+-- into its one mail slot; the stock bags and Bagnon both click through here.
+local BagClick = ContainerFrameItemButton_OnClick
+function ContainerFrameItemButton_OnClick(button, ignoreModifiers)
+    if button ~= "RightButton" or not MailFrame:IsVisible() or IsModifierKeyDown() then -- "### IsModifierKeyDown()"
+        return BagClick(button, ignoreModifiers)
     end
-    local guid = C_Item.GetItemGUID({ bagID = bag, slotIndex = slot })
+    local guid = C_Item.GetItemGUID({ bagID = this:GetParent():GetID(), slotIndex = this:GetID() })
     if Find(guid) then return Detach(guid) end
     if not SendMailFrame:IsVisible() then MailFrameTab_OnClick(2) end
     Attach(guid)

@@ -6,38 +6,22 @@ if not M.Print then return end -- no ClassicAPI: Names.lua said so
 
 local ROWS = INBOXITEMS_TO_DISPLAY
 local WAIT = 3 -- seconds a step waits for its inbox update before asking again
--- The battleground marks by item ID (servers/octowow.md, from octowow.st/db).
-local MARKS = { [20560] = "AV", [20558] = "WSG", [20559] = "AB" }
-local ORDER = { "AV", "WSG", "AB" }
 local AUCTION = {} -- the start of each auction mail subject
 for _, subject in ipairs({ AUCTION_SOLD_MAIL_SUBJECT, AUCTION_REMOVED_MAIL_SUBJECT, AUCTION_EXPIRED_MAIL_SUBJECT,
     AUCTION_WON_MAIL_SUBJECT, AUCTION_OUTBID_MAIL_SUBJECT }) do
     AUCTION[#AUCTION + 1] = string.gsub(subject, "%%s.*", "")
 end
 
-local run -- the take in progress: index, work (the mail being emptied), single, money, marks, fetched, timer
+local run -- the take in progress: index, work (the mail being emptied), single, money, fetched, timer
 local events = CreateFrame("Frame")
 local openAll = CreateFrame("Button", "MailOpenAllButton", InboxFrame, "UIPanelButtonTemplate")
-
--- "AV 2, WSG 4" for a count per mark, and how many kinds that is.
-local function MarkText(counts)
-    local parts = {}
-    for _, mark in ipairs(ORDER) do
-        if counts[mark] then parts[#parts + 1] = mark .. " " .. counts[mark] end
-    end
-    return table.concat(parts, ", "), #parts
-end
 
 -- Taking ---------------------------------------------------------------------
 
 local function Finish(why)
     if not run then return end
     if run.timer then run.timer:Cancel() end
-    local parts = {}
-    if run.money > 0 then parts[1] = GetCoinTextureString(run.money) end
-    local marks = MarkText(run.marks)
-    if marks ~= "" then parts[#parts + 1] = "marks " .. marks end
-    if #parts > 0 then M.Print("Collected " .. table.concat(parts, "; ") .. ".") end
+    if run.money > 0 then M.Print("Collected " .. GetCoinTextureString(run.money) .. ".") end
     if why then M.Print(why) end
     run = nil
     openAll:SetText("Open All")
@@ -66,17 +50,12 @@ local function Step()
         if work and (work.sender ~= sender or work.subject ~= subject
             or (work.asked == "delete" and (money > 0 or item))) then work, run.work = nil, nil end
         if not work and cod == 0 and not gm and (money > 0 or item) then
-            local _, _, count = GetInboxItem(i)
-            work = { sender = sender, subject = subject, mark = MARKS[GetInboxItemID(i)], count = count }
+            work = { sender = sender, subject = subject }
             run.work, run.money = work, run.money + money
             GetInboxText(i) -- read first, as opening the mail does
         end
         if work then
             run.index, run.fetched = i, false
-            if work.mark and not item then -- the item reached the bags
-                run.marks[work.mark] = (run.marks[work.mark] or 0) + work.count
-                work.mark = nil
-            end
             local ask = money > 0 and "money" or item and "item" or "delete"
             if work.asked == ask then return end -- an update that is not the answer
             work.asked = ask
@@ -103,7 +82,7 @@ end
 local function Start(index)
     Finish()
     HideUIPanel(OpenMailFrame)
-    run = { index = index or 1, single = index, money = 0, marks = {} }
+    run = { index = index or 1, single = index, money = 0 }
     openAll:SetText("Stop")
     Step()
 end
@@ -180,20 +159,7 @@ hooksecurefunc("InboxFrame_Update", function()
         row.returned:SetShown(index <= total and returned)
         row.auction:SetShown(index <= total and IsAuction(sender, subject))
     end
-    local counts, marks = {}, 0
-    for index = 1, total do
-        local mark = MARKS[GetInboxItemID(index)]
-        if mark then
-            local _, _, count = GetInboxItem(index)
-            counts[mark], marks = (counts[mark] or 0) + count, marks + count
-        end
-    end
-    local title = INBOX .. " [" .. (total > 0 and InboxFrame.pageNum .. "/" .. math.ceil(total / ROWS) or EMPTY) .. "]"
-    if marks > 0 then
-        local text, kinds = MarkText(counts)
-        title = title .. " - " .. marks .. (marks == 1 and " mark" or " marks") .. (kinds > 1 and " (" .. text .. ")" or "")
-    end
-    InboxTitleText:SetText(title)
+    InboxTitleText:SetText(INBOX .. " [" .. (total > 0 and InboxFrame.pageNum .. "/" .. math.ceil(total / ROWS) or EMPTY) .. "]")
 end)
 
 -- Events ---------------------------------------------------------------------

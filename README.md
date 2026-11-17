@@ -11,8 +11,7 @@ A better mailbox for WoW 1.12.1. Needs [ClassicAPI](https://github.com/brues-cod
   still move or sort your bags.
 - **Names complete** as you type: the people you mailed first, then your other
   characters, group, guild, friends and whispers. Tab picks the next name.
-- The inbox shows stack counts, returned and auction-house mail, the page, and
-  how many battleground marks are waiting.
+- The inbox shows stack counts, returned and auction-house mail, and the page.
 
 No settings and no chat command: it just works at the mailbox.
 
