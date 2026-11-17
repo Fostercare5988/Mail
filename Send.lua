@@ -6,6 +6,7 @@ local _, M = ...
 if not M.Print then return end -- no ClassicAPI: Names.lua said so
 
 local SLOTS, PER_ROW = 21, 7
+local ANSWER = 10 -- seconds a letter waits for the server's answer before the send stops
 local queue = {} -- item GUIDs, in the order they were attached
 local sending -- the letter going out: to, subject, body, money, cod, total, sent, waiting
 local picked -- the GUID PickupContainerItem last took from a bag
@@ -16,6 +17,14 @@ local function Where(guid) return C_Item.GetItemLocation(guid) end -- "### C_Ite
 
 local function Find(guid)
     for i, queued in ipairs(queue) do if queued == guid then return i end end
+end
+
+-- The waiting item in a bag slot, if one waits there.
+local function WaitingAt(bag, slot)
+    for _, guid in ipairs(queue) do
+        local at = Where(guid)
+        if at and at.bagID == bag and at.slotIndex == slot then return guid end
+    end
 end
 
 -- "### C_Item.LockItem(itemLocation)": a waiting item looks locked in every
@@ -67,8 +76,12 @@ local function Draw()
     SendMailFrame_Update()
 end
 
+-- While items wait: bag changes (an item gone) and lock changes (the server
+-- clears a lock; "### C_Item.IsLocked(itemLocation)" says to listen here).
 local function Listen()
-    if #queue > 0 then events:RegisterEvent("BAG_UPDATE_DELAYED") else events:UnregisterEvent("BAG_UPDATE_DELAYED") end
+    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED" }) do
+        if #queue > 0 then events:RegisterEvent(event) else events:UnregisterEvent(event) end
+    end
 end
 
 -- Attaching --------------------------------------------------------------------
@@ -91,10 +104,11 @@ local function Detach(guid)
 end
 
 local function Attach(guid)
-    if sending or not guid or Find(guid) then return end
+    if sending then return M.Print("Wait until the letters on their way have gone.") end
+    local at = guid and Where(guid)
+    if not at then return M.Print("That item cannot be attached.") end
+    if Find(guid) then return end
     if #queue == SLOTS then return M.Print("All " .. SLOTS .. " slots are full.") end
-    local at = Where(guid)
-    if not at then return end
     if not Mailable(at) then return M.Print(C_Item.GetItemLink(at) .. " cannot be mailed.") end
     queue[#queue + 1] = guid
     Lock()
@@ -127,10 +141,11 @@ function ContainerFrameItemButton_OnClick(button, ignoreModifiers)
     if button ~= "RightButton" or not MailFrame:IsVisible() or IsModifierKeyDown() then -- "### IsModifierKeyDown()"
         return BagClick(button, ignoreModifiers)
     end
-    local guid = C_Item.GetItemGUID({ bagID = this:GetParent():GetID(), slotIndex = this:GetID() })
-    if Find(guid) then return Detach(guid) end
+    local bag, slot = this:GetParent():GetID(), this:GetID()
+    local waiting = WaitingAt(bag, slot)
+    if waiting then return Detach(waiting) end
     if not SendMailFrame:IsVisible() then MailFrameTab_OnClick(2) end
-    Attach(guid)
+    Attach(C_Item.GetItemGUID({ bagID = bag, slotIndex = slot }))
 end
 
 -- An item dropped on the letter is attached too, not put in the client's slot.
@@ -220,6 +235,7 @@ end)
 
 local function Stop(why)
     if not sending then return end
+    if sending.timer then sending.timer:Cancel() end
     if GetSendMailItem() then -- the item of the letter that failed goes back to its bag
         ClearCursor()
         ClickSendMailItemButton()
@@ -241,6 +257,7 @@ local function Next()
     end
     local s = sending
     if not guid and (s.sent > 0 or s.total > 0) then -- the last letter went, or every item is gone
+        if s.timer then s.timer:Cancel() end
         sending = nil
         Listen()
         return Draw()
@@ -265,6 +282,8 @@ local function Next()
         SetSendMailMoney(s.money)
     end
     s.waiting = guid or true
+    if s.timer then s.timer:Cancel() end
+    s.timer = C_Timer.NewTimer(ANSWER, function() Stop("The server did not answer. Press Send to try again.") end)
     SendMail(s.to, subject, s.body)
 end
 
@@ -309,7 +328,7 @@ local MAIL_ERRORS = { [ERR_MAIL_TO_SELF] = true, [ERR_PLAYER_WRONG_FACTION] = tr
 local handlers = {}
 function handlers.MAIL_SHOW()
     for event in pairs(handlers) do
-        if event ~= "BAG_UPDATE_DELAYED" then events:RegisterEvent(event) end
+        if event ~= "BAG_UPDATE_DELAYED" and event ~= "ITEM_LOCK_CHANGED" then events:RegisterEvent(event) end
     end
     Prefill()
 end
@@ -342,5 +361,6 @@ function handlers.BAG_UPDATE_DELAYED()
     Listen()
     Draw()
 end
+handlers.ITEM_LOCK_CHANGED = Lock
 events:SetScript("OnEvent", function() handlers[event]() end)
 events:RegisterEvent("MAIL_SHOW")
