@@ -12,7 +12,7 @@ for _, subject in ipairs({ AUCTION_SOLD_MAIL_SUBJECT, AUCTION_REMOVED_MAIL_SUBJE
     AUCTION[#AUCTION + 1] = string.gsub(subject, "%%s.*", "")
 end
 
-local run -- the take in progress: index, work (the mail being emptied), single, money, fetched, timer
+local run -- the take in progress: index, work (the mail being emptied), single, queue, money, fetched, timer
 local events = CreateFrame("Frame")
 local openAll = CreateFrame("Button", "MailOpenAllButton", InboxFrame, "UIPanelButtonTemplate")
 
@@ -43,10 +43,25 @@ local function Wait()
     run.timer = C_Timer.NewTimer(WAIT, AskAgain)
 end
 
+-- A right-click take is done with its mail: on to the next mail right-clicked
+-- meanwhile. A deleted mail moves the ones below it up by one.
+local Step
+local function Next(deleted)
+    local done, index = run.index, table.remove(run.queue, 1)
+    run.work = nil
+    if not index then return Finish() end
+    if deleted then
+        if index > done then index = index - 1 end
+        for k, j in ipairs(run.queue) do if j > done then run.queue[k] = j - 1 end end
+    end
+    run.index = index
+    return Step()
+end
+
 -- Each inbox update moves the take on by one request: the money, then the
--- item, then deleting the emptied mail. Mail with C.O.D., GM mail and letters
--- that carry nothing are passed by.
-local function Step()
+-- item, then deleting the emptied mail, which is done when the mail is gone.
+-- Mail with C.O.D., GM mail and letters that carry nothing are passed by.
+function Step()
     if not run then return end
     local i = run.index
     while i <= GetInboxNumItems() do
@@ -54,7 +69,10 @@ local function Step()
         local work = run.work
         -- Another mail in its place: the one asked about is gone (deleted).
         if work and (work.sender ~= sender or work.subject ~= subject
-            or (work.asked == "delete" and (money > 0 or item))) then work, run.work = nil, nil end
+            or (work.asked == "delete" and (money > 0 or item))) then
+            if run.single then return Next(true) end
+            work, run.work = nil, nil
+        end
         if not work and cod == 0 and not gm and (money > 0 or item) then
             work = { sender = sender, subject = subject }
             run.work, run.money = work, run.money + money
@@ -71,15 +89,15 @@ local function Step()
                 TakeInboxItem(i)
             else
                 DeleteInboxItem(i)
-                if run.single then return Finish() end
             end
             return Wait()
         end
-        if run.single then return Finish() end
+        if run.single then return Next(false) end
         i = i + 1
     end
     -- The server sends 50 mails at most: ask for the rest until none come.
-    if run.single or run.fetched then return Finish() end
+    if run.single then return Next(run.work ~= nil) end -- the last mail, deleted
+    if run.fetched then return Finish() end
     run.index, run.fetched = i, true
     CheckInbox()
     Wait()
@@ -88,7 +106,7 @@ end
 local function Start(index)
     Finish()
     HideUIPanel(OpenMailFrame)
-    run = { index = index or 1, single = index, money = 0 }
+    run = { index = index or 1, single = index, queue = {}, money = 0 }
     openAll:SetText("Stop")
     Step()
 end
@@ -99,13 +117,18 @@ openAll:SetHeight(25)
 openAll:SetText("Open All")
 openAll:SetScript("OnClick", function() if run then Finish() else Start() end end)
 
--- A right-click on a row takes that mail; a left-click opens it, as the
--- row's own script did (FrameXML MailFrame.xml, MailItemTemplate).
+-- A right-click on a row takes that mail, after the ones right-clicked before
+-- it; a left-click opens it, as the row's own script did (FrameXML
+-- MailFrame.xml, MailItemTemplate).
 local function RowClick()
     if arg1 ~= "RightButton" then return InboxFrame_OnClick(this.index) end
     this:SetChecked(nil)
     local _, _, _, _, money, cod, _, item = GetInboxHeaderInfo(this.index)
-    if cod == 0 and (money > 0 or item) then Start(this.index) end
+    if cod ~= 0 or not (money > 0 or item) then return end
+    if not (run and run.single) then return Start(this.index) end
+    if this.index == run.index then return end
+    for _, j in ipairs(run.queue) do if j == this.index then return end end
+    run.queue[#run.queue + 1] = this.index
 end
 
 hooksecurefunc("InboxFrameItem_OnEnter", function()
