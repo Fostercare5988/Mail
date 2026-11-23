@@ -35,7 +35,10 @@ local function Ask()
 end
 -- C_Timer drops a callback's error; this sends it to the error handler (KP-63).
 local function AskAgain() xpcall(Ask, geterrorhandler()) end
+-- The client may answer inside the request (the inbox already fetched), and
+-- that answer can end the take before Wait is reached.
 local function Wait()
+    if not run then return end
     if run.timer then run.timer:Cancel() end
     run.timer = C_Timer.NewTimer(WAIT, AskAgain)
 end
