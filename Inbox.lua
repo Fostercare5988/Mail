@@ -193,16 +193,32 @@ end)
 
 -- Events ---------------------------------------------------------------------
 
+-- The client asks for the mail list once when the mailbox opens. Seen in play
+-- 2026-11-23: after a login that answer never came and the inbox stayed empty
+-- until a /reload. Until the list comes, it is asked for again every WAIT s.
+local list -- the timer while the list has not come
+local function ListCame()
+    if list then list:Cancel() end
+    list = nil
+end
+local function AskList()
+    CheckInbox()
+    list = C_Timer.NewTimer(WAIT, function() xpcall(AskList, geterrorhandler()) end)
+end
+
 local handlers = {}
 function handlers.MAIL_SHOW()
     for event in pairs(handlers) do events:RegisterEvent(event) end
+    ListCame()
+    list = C_Timer.NewTimer(WAIT, function() xpcall(AskList, geterrorhandler()) end)
 end
 function handlers.MAIL_CLOSED()
+    ListCame()
     Finish()
     events:UnregisterAllEvents()
     events:RegisterEvent("MAIL_SHOW")
 end
-function handlers.MAIL_INBOX_UPDATE() Step() end
+function handlers.MAIL_INBOX_UPDATE() ListCame(); Step() end
 -- New mail while the mailbox is open. UNVERIFIED: that the client sends it here.
 function handlers.UPDATE_PENDING_MAIL() if not run then CheckInbox() end end
 function handlers.UI_ERROR_MESSAGE()
