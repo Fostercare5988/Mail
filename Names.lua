@@ -94,7 +94,9 @@ local function Suggest()
         if #matches == SHOWN then break end
         if string.find(string.upper(name), upper, 1, true) == 1 then matches[#matches + 1] = name end
     end
-    for _, entry in ipairs(C_AutoComplete.GetAutoCompleteResults(text, SHOWN, 0, true, KNOWN, 0)) do
+    -- Cursor -1 is the end of the text, so a name must start with all of it; at 0
+    -- "Er" matched any name with "er" later in it, and Complete wrote over the typing.
+    for _, entry in ipairs(C_AutoComplete.GetAutoCompleteResults(text, SHOWN, -1, true, KNOWN, 0)) do
         if #matches == SHOWN then break end
         if not Listed(entry.name) then matches[#matches + 1] = entry.name end
     end
